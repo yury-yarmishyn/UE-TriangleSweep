@@ -5,12 +5,15 @@ It provides Blueprint-exposed functions that mirror the native `LineTrace` and `
 
 ## Features
 
-- **Blueprint API**: Three ready-to-use nodes:
+- **Blueprint API**: Six ready-to-use nodes for all your collision needs:
   - `Sweep Triangle By Channel`
   - `Sweep Triangle By Profile`
   - `Sweep Triangle For Objects`
+  - `Multi Sweep Triangle By Channel`
+  - `Multi Sweep Triangle By Profile`
+  - `Multi Sweep Triangle For Objects`
 - **Fully Populated FHitResult**: Returns complete physical hit data including `ImpactPoint`, `Normal`, `Time`, and `Distance`.
-- **Zero Heap Allocations**: Core loops are heavily optimized, utilizing `TInlineAllocator` to keep data exclusively on the stack.
+- **Zero Heap Allocations (Single Sweep)**: Core loops are heavily optimized, utilizing `TInlineAllocator` to keep data exclusively on the stack.
 - **Fast Rejection Methods**: Implements early-out sphere checks to minimize the amount of math operations processed per overlapping body.
 - **Advanced Display Integration**: Trace color settings, draw time, and the `bIgnoreSelf` flag are integrated into the standard Kismet Blueprint UX.
 - **Complex Collision Support**: Support for `bTraceComplex` to calculate per-poly collision if needed.

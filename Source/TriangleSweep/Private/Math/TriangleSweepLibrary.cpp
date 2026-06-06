@@ -115,6 +115,111 @@ bool UTriangleSweepLibrary::SweepTriangleForObjects(
 	return bHit;
 }
 
+bool UTriangleSweepLibrary::SweepTriangleMultiByChannel(
+	UObject* WorldContextObject, 
+	const FVector& A, 
+	const FVector& B, 
+	const FVector& C, 
+	TEnumAsByte<ECollisionChannel> TraceChannel, 
+	bool bTraceComplex, 
+	const TArray<AActor*>& ActorsToIgnore, 
+	EDrawDebugTrace::Type DrawDebugType, 
+	TArray<FHitResult>& OutHits, 
+	bool bIgnoreSelf, 
+	FLinearColor TraceColor, 
+	FLinearColor TraceHitColor, 
+	float DrawTime)
+{
+	if (!WorldContextObject) return false;
+	UWorld* World = WorldContextObject->GetWorld();
+	if (!World) return false;
+
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(SweepTriangleBP), bTraceComplex);
+	QueryParams.AddIgnoredActors(ActorsToIgnore);
+	if (bIgnoreSelf && WorldContextObject->IsA<AActor>())
+	{
+		QueryParams.AddIgnoredActor(Cast<AActor>(WorldContextObject));
+	}
+
+	bool bHit = SweepTriangleMultiCore(World, A, B, C, TraceChannel, NAME_None, TArray<TEnumAsByte<EObjectTypeQuery>>(), QueryParams, 0, OutHits);
+
+	if (DrawDebugType != EDrawDebugTrace::None)
+	{
+		DrawDebugTriangleSweepMulti(World, A, B, C, bHit, OutHits, DrawDebugType, TraceColor, TraceHitColor, DrawTime);
+	}
+	return bHit;
+}
+
+bool UTriangleSweepLibrary::SweepTriangleMultiByProfile(
+	UObject* WorldContextObject, 
+	const FVector& A, 
+	const FVector& B, 
+	const FVector& C, 
+	FName ProfileName, 
+	bool bTraceComplex, 
+	const TArray<AActor*>& ActorsToIgnore, 
+	EDrawDebugTrace::Type DrawDebugType, 
+	TArray<FHitResult>& OutHits, 
+	bool bIgnoreSelf, 
+	FLinearColor TraceColor, 
+	FLinearColor TraceHitColor, 
+	float DrawTime)
+{
+	if (!WorldContextObject) return false;
+	UWorld* World = WorldContextObject->GetWorld();
+	if (!World) return false;
+
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(SweepTriangleBP), bTraceComplex);
+	QueryParams.AddIgnoredActors(ActorsToIgnore);
+	if (bIgnoreSelf && WorldContextObject->IsA<AActor>())
+	{
+		QueryParams.AddIgnoredActor(Cast<AActor>(WorldContextObject));
+	}
+
+	bool bHit = SweepTriangleMultiCore(World, A, B, C, ECC_WorldStatic, ProfileName, TArray<TEnumAsByte<EObjectTypeQuery>>(), QueryParams, 1, OutHits);
+
+	if (DrawDebugType != EDrawDebugTrace::None)
+	{
+		DrawDebugTriangleSweepMulti(World, A, B, C, bHit, OutHits, DrawDebugType, TraceColor, TraceHitColor, DrawTime);
+	}
+	return bHit;
+}
+
+bool UTriangleSweepLibrary::SweepTriangleMultiForObjects(
+	UObject* WorldContextObject, 
+	const FVector& A, 
+	const FVector& B, 
+	const FVector& C, 
+	const TArray<TEnumAsByte<EObjectTypeQuery>>& ObjectTypes, 
+	bool bTraceComplex, 
+	const TArray<AActor*>& ActorsToIgnore, 
+	EDrawDebugTrace::Type DrawDebugType, 
+	TArray<FHitResult>& OutHits, 
+	bool bIgnoreSelf, 
+	FLinearColor TraceColor, 
+	FLinearColor TraceHitColor, 
+	float DrawTime)
+{
+	if (!WorldContextObject) return false;
+	UWorld* World = WorldContextObject->GetWorld();
+	if (!World) return false;
+
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(SweepTriangleBP), bTraceComplex);
+	QueryParams.AddIgnoredActors(ActorsToIgnore);
+	if (bIgnoreSelf && WorldContextObject->IsA<AActor>())
+	{
+		QueryParams.AddIgnoredActor(Cast<AActor>(WorldContextObject));
+	}
+
+	bool bHit = SweepTriangleMultiCore(World, A, B, C, ECC_WorldStatic, NAME_None, ObjectTypes, QueryParams, 2, OutHits);
+
+	if (DrawDebugType != EDrawDebugTrace::None)
+	{
+		DrawDebugTriangleSweepMulti(World, A, B, C, bHit, OutHits, DrawDebugType, TraceColor, TraceHitColor, DrawTime);
+	}
+	return bHit;
+}
+
 bool UTriangleSweepLibrary::SweepTriangleCore(
 	UWorld* World,
 	const FVector& A, 
@@ -162,26 +267,24 @@ bool UTriangleSweepLibrary::SweepTriangleCore(
 	else if (TraceMode == 1) bStartHit = World->LineTraceSingleByProfile(TraceHit, B, A, ProfileName, QueryParams);
 	else if (TraceMode == 2) bStartHit = World->LineTraceSingleByObjectType(TraceHit, B, A, FCollisionObjectQueryParams(ObjectTypes), QueryParams);
 	
-	if (bStartHit)                                                                                                                                                                            
-	{                                                                                                                                                                                                
+	if (bStartHit)
+	{
 		OutHit = TraceHit;
-		OutHit.Time = 0.f;                                                                                                                                                                               
+		OutHit.Time = 0.f;
 		OutHit.ImpactPoint = TraceHit.bStartPenetrating ? B : TraceHit.ImpactPoint;
 		OutHit.Location = OutHit.ImpactPoint;
 		OutHit.TraceStart = B;
 		OutHit.TraceEnd = A;
-		return true;                                                                                                                        
-	}  
+		return true;
+	}
 
 #if ENABLE_SWEEP_TIMERS
 	double T2 = FPlatformTime::Seconds();
 #endif
 
-	FBox TriangleAABB(ForceInit);
-	TriangleAABB += A;
-	TriangleAABB += B;
-	TriangleAABB += C;
-	TriangleAABB = TriangleAABB.ExpandBy(0.1f);
+	FVector MinBox = A.ComponentMin(B).ComponentMin(C);
+	FVector MaxBox = A.ComponentMax(B).ComponentMax(C);
+	FBox TriangleAABB(MinBox - 0.1f, MaxBox + 0.1f);
 	
 	FCollisionShape BoxShape = FCollisionShape::MakeBox(TriangleAABB.GetExtent());
 	FVector BoxCenter = TriangleAABB.GetCenter();
@@ -303,6 +406,155 @@ void UTriangleSweepLibrary::DrawDebugTriangleSweep(
 	}
 }
 
+bool UTriangleSweepLibrary::SweepTriangleMultiCore(
+	UWorld* World,
+	const FVector& A, 
+	const FVector& B, 
+	const FVector& C,
+	ECollisionChannel TraceChannel,
+	FName ProfileName,
+	const TArray<TEnumAsByte<EObjectTypeQuery>>& ObjectTypes,
+	const FCollisionQueryParams& QueryParams,
+	uint8 TraceMode,
+	TArray<FHitResult>& OutHits)
+{
+	OutHits.Empty();
+
+	const FVector V0 = B - A;
+	const FVector V1 = C - A;
+	const float D00 = FVector::DotProduct(V0, V0);
+	const float D01 = FVector::DotProduct(V0, V1);
+	const float D11 = FVector::DotProduct(V1, V1);
+	const float Denom = (D00 * D11) - (D01 * D01);
+	const bool bValidBarycentric = FMath::Abs(Denom) >= KINDA_SMALL_NUMBER;
+	
+	if (!bValidBarycentric)
+	{
+		return false;
+	}
+	
+	const float InvDenom = 1.0f / Denom;
+	const FVector TriangleNormal = FVector::CrossProduct(V0, V1).GetSafeNormal();
+
+	FHitResult TraceHit;
+	bool bStartHit = false;
+	if (TraceMode == 0) bStartHit = World->LineTraceSingleByChannel(TraceHit, B, A, TraceChannel, QueryParams);
+	else if (TraceMode == 1) bStartHit = World->LineTraceSingleByProfile(TraceHit, B, A, ProfileName, QueryParams);
+	else if (TraceMode == 2) bStartHit = World->LineTraceSingleByObjectType(TraceHit, B, A, FCollisionObjectQueryParams(ObjectTypes), QueryParams);
+	
+	if (bStartHit)
+	{
+		FHitResult StartHit = TraceHit;
+		StartHit.Time = 0.f;
+		StartHit.ImpactPoint = TraceHit.bStartPenetrating ? B : TraceHit.ImpactPoint;
+		StartHit.Location = StartHit.ImpactPoint;
+		StartHit.TraceStart = B;
+		StartHit.TraceEnd = A;
+		OutHits.Add(StartHit);
+	}
+
+	FVector MinBox = A.ComponentMin(B).ComponentMin(C);
+	FVector MaxBox = A.ComponentMax(B).ComponentMax(C);
+	FBox TriangleAABB(MinBox - 0.1f, MaxBox + 0.1f);
+	
+	FCollisionShape BoxShape = FCollisionShape::MakeBox(TriangleAABB.GetExtent());
+	FVector BoxCenter = TriangleAABB.GetCenter();
+	TArray<FOverlapResult> OutOverlaps;
+	
+	bool bHasOverlaps = false;
+	if (TraceMode == 0) bHasOverlaps = World->OverlapMultiByChannel(OutOverlaps, BoxCenter, FQuat::Identity, TraceChannel, BoxShape, QueryParams);
+	else if (TraceMode == 1) bHasOverlaps = World->OverlapMultiByProfile(OutOverlaps, BoxCenter, FQuat::Identity, ProfileName, BoxShape, QueryParams);
+	else if (TraceMode == 2) bHasOverlaps = World->OverlapMultiByObjectType(OutOverlaps, BoxCenter, FQuat::Identity, FCollisionObjectQueryParams(ObjectTypes), BoxShape, QueryParams);
+		
+	if (!bHasOverlaps && OutHits.Num() == 0)
+	{
+		return false;
+	}
+	
+	const FPlane TrianglePlane = FPlane(A, TriangleNormal);
+	TArray<FVector, TInlineAllocator<32>> IntersectionPoints;
+
+	for (const FOverlapResult& OutOverlap : OutOverlaps)
+	{
+		UPrimitiveComponent* HitComp = OutOverlap.GetComponent();
+		if (!HitComp) continue;
+
+		const FBoxSphereBounds& Bounds = HitComp->Bounds;
+		if (FMath::Abs(TrianglePlane.PlaneDot(Bounds.Origin)) > Bounds.SphereRadius)
+		{
+			continue;
+		}
+
+		IntersectionPoints.Reset();
+		FindPlaneIntersections(HitComp, TrianglePlane, IntersectionPoints);
+
+		for (const FVector& Point : IntersectionPoints)
+		{
+			const FVector V2 = Point - A;
+			const float D20 = FVector::DotProduct(V2, V0);
+			const float D21 = FVector::DotProduct(V2, V1);
+
+			const float Beta = (D11 * D20 - D01 * D21) * InvDenom;
+			const float Gamma = (D00 * D21 - D01 * D20) * InvDenom;
+			const float Alpha = 1.0f - Beta - Gamma;
+			
+			if (Alpha >= 0 && Beta >= 0 && Gamma >= 0)
+			{
+				if (Alpha + Gamma >= KINDA_SMALL_NUMBER)
+				{
+					float t = Gamma / (Alpha + Gamma);
+					
+					if (t >= 0.f && t <= 1.f)
+					{
+						FHitResult Hit;
+						Hit.bBlockingHit = true;
+						Hit.Time = t;
+						Hit.ImpactPoint = Point;
+						Hit.Location = Point;
+						Hit.Normal = TriangleNormal;
+						Hit.ImpactNormal = -TriangleNormal;
+						Hit.Distance = FVector::Distance(A, Point);
+						Hit.Component = HitComp;
+						Hit.HitObjectHandle = FActorInstanceHandle(HitComp->GetOwner());
+						Hit.TraceStart = A;
+						Hit.TraceEnd = (B + C) * 0.5f;
+						OutHits.Add(Hit);
+					}
+				}
+			}
+		}
+	}
+
+	if (OutHits.Num() > 0)
+	{
+		OutHits.Sort([](const FHitResult& HitA, const FHitResult& HitB) { return HitA.Time < HitB.Time; });
+		return true;
+	}
+	
+	return false;
+}
+
+void UTriangleSweepLibrary::DrawDebugTriangleSweepMulti(
+	UWorld* World, const FVector& A, const FVector& B, const FVector& C, 
+	bool bHit, const TArray<FHitResult>& HitResults, 
+	EDrawDebugTrace::Type DrawDebugType, 
+	FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+{
+	bool bPersistent = DrawDebugType == EDrawDebugTrace::Persistent;
+	float LifeTime = (DrawDebugType == EDrawDebugTrace::ForDuration) ? DrawTime : 0.f;
+
+	DrawDebugLine(World, A, B, TraceColor.ToFColor(true), bPersistent, LifeTime, 0, 1.5f);
+	DrawDebugLine(World, B, C, TraceColor.ToFColor(true), bPersistent, LifeTime, 0, 1.5f);
+	DrawDebugLine(World, C, A, TraceColor.ToFColor(true), bPersistent, LifeTime, 0, 1.5f);
+
+	if (bHit)
+	{
+		for (const FHitResult& Hit : HitResults)
+		{
+			DrawDebugPoint(World, Hit.ImpactPoint, 10.0f, TraceHitColor.ToFColor(true), bPersistent, LifeTime);
+		}
+	}
+}
 void UTriangleSweepLibrary::FindPlaneIntersections(UPrimitiveComponent* HitComp, const FPlane& Plane,
 	TArray<FVector, TInlineAllocator<32>>& IntersectionPoints)
 {
