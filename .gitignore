@@ -1,0 +1,7 @@
+Binaries/
+Intermediate/
+Saved/
+.vs/
+.idea/
+*.sln
+*.suo
