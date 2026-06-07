@@ -14,6 +14,7 @@ It provides Blueprint-exposed functions that mirror the native `LineTrace` and `
   - `Multi Sweep Triangle By Channel`
   - `Multi Sweep Triangle By Profile`
   - `Multi Sweep Triangle For Objects`
+  ![All Blueprint Nodes](Resources/Images/blueprint_nodes_overview.png)
 - **Fully Populated FHitResult**: Returns complete physical hit data including `ImpactPoint`, `Normal`, `Time`, and `Distance`.
 - **Zero Heap Allocations (Single Sweep)**: Core loops are heavily optimized, utilizing `TInlineAllocator` to keep data exclusively on the stack.
 - **Fast Rejection Methods**: Implements early-out sphere checks to minimize the amount of math operations processed per overlapping body.
@@ -21,6 +22,8 @@ It provides Blueprint-exposed functions that mirror the native `LineTrace` and `
 - **Complex Collision Support**: Support for `bTraceComplex` to calculate per-poly collision if needed.
 
 ## Performance
+
+> **⚠️ Performance Warning:** Sweeping against complex Convex Hulls can be expensive. For best performance, prefer simple primitives (Boxes, Spheres, Capsules) or low-poly convex geometry where possible.
 
 This plugin is designed to run in the narrow-phase within the game thread seamlessly. According to Unreal Insights profiling on an Intel Core Ultra 7 255H, the typical Blueprint node execution ranges from **90μs to 300μs** (microseconds), with an average typical case of **100-120μs**. 
 This means you can comfortably run up to **50 triangle sweeps per tick** on this hardware without breaking the 60 FPS (16.67ms) frame budget.
