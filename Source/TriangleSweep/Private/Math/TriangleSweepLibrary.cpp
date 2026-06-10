@@ -6,7 +6,7 @@
 #define ENABLE_SWEEP_TIMERS 0
 #else
 #ifndef ENABLE_SWEEP_TIMERS
-#define ENABLE_SWEEP_TIMERS 0
+#define ENABLE_SWEEP_TIMERS 1
 #endif
 #endif
 
@@ -365,7 +365,7 @@ bool UTriangleSweepLibrary::SweepTriangleGenericCore(
 		}
 
 		IntersectionPoints.Reset();
-		TestComponentAgainstTriangle(HitComp, A, B, C, TrianglePlane, D00, D11, D01, InvDenom, IntersectionPoints);
+		TestComponentAgainstTriangle(HitComp, A, B, C, TrianglePlane, IntersectionPoints);
 
 		for (const FVector& Point : IntersectionPoints)
 		{
@@ -447,12 +447,10 @@ void UTriangleSweepLibrary::TestComponentAgainstTriangle(
 	UPrimitiveComponent* HitComp, 
 	const FVector& A, const FVector& B, const FVector& C, 
 	const FPlane& TrianglePlane,
-	float D00, float D11, float D01, float InvDenom, 
 	TArray<FVector, TInlineAllocator<32>>& OutPoints)
 {
 	FTransform CompTransform = HitComp->GetComponentTransform();
 	UBodySetup* BodySetup = HitComp->GetBodySetup();
-	const FVector TriNormal = TrianglePlane.GetNormal();
 
 	if (BodySetup && BodySetup->AggGeom.GetElementCount() > 0)
 	{
@@ -473,7 +471,7 @@ void UTriangleSweepLibrary::TestComponentAgainstTriangle(
 			FTransform WorldTransform = BoxElem.GetTransform() * CompTransform;
 			FVector Extent = FVector(BoxElem.X, BoxElem.Y, BoxElem.Z) * 0.5f * WorldTransform.GetScale3D();
             
-			if (TestBoxTriangleSAT(WorldTransform, Extent, A, B, C, TriNormal))
+			if (TestBoxTriangleSAT(WorldTransform, Extent, A, B, C))
 			{
 				OutPoints.Add(FMath::ClosestPointOnTriangleToPoint(WorldTransform.GetLocation(), A, B, C));
 			}
@@ -491,7 +489,7 @@ void UTriangleSweepLibrary::TestComponentAgainstTriangle(
 		for (const FKConvexElem& ConvexElem : BodySetup->AggGeom.ConvexElems)
 		{
 			FTransform WorldTransform = ConvexElem.GetTransform() * CompTransform;
-			IntersectConvex(WorldTransform, ConvexElem, TrianglePlane, OutPoints);
+			IntersectConvex(WorldTransform, ConvexElem, A, B, C, OutPoints);
 		}
 	}
 	else
@@ -510,7 +508,7 @@ void UTriangleSweepLibrary::TestComponentAgainstTriangle(
 			}
 			case ECollisionShape::Box:
 			{
-				if (TestBoxTriangleSAT(CompTransform, Shape.GetBox(), A, B, C, TriNormal))
+				if (TestBoxTriangleSAT(CompTransform, Shape.GetBox(), A, B, C))
 				{
 					OutPoints.Add(FMath::ClosestPointOnTriangleToPoint(CompTransform.GetLocation(), A, B, C));
 				}
@@ -528,22 +526,24 @@ void UTriangleSweepLibrary::TestComponentAgainstTriangle(
 
 bool UTriangleSweepLibrary::TestBoxTriangleSAT(
 	const FTransform& BoxTransform, const FVector& Extent, 
-	const FVector& A, const FVector& B, const FVector& C, 
-	const FVector& TriNormal)
+	const FVector& A, const FVector& B, const FVector& C)
 {
-	FVector BoxCenter = BoxTransform.GetLocation();
-	FVector BoxX = BoxTransform.GetUnitAxis(EAxis::X);
-	FVector BoxY = BoxTransform.GetUnitAxis(EAxis::Y);
-	FVector BoxZ = BoxTransform.GetUnitAxis(EAxis::Z);
-	FVector E0 = B - A;
-	FVector E1 = C - B;
-	FVector E2 = A - C;
+	FTransform InverseTransform = BoxTransform.Inverse();
+	FVector LocalA = InverseTransform.TransformPosition(A);
+	FVector LocalB = InverseTransform.TransformPosition(B);
+	FVector LocalC = InverseTransform.TransformPosition(C);
 	
+	FVector E0 = LocalB - LocalA;
+	FVector E1 = LocalC - LocalB;
+	FVector E2 = LocalA - LocalC;
+	FVector LocalTriNormal = FVector::CrossProduct(E0, E1).GetSafeNormal();
+
 	FVector Axes[13] = {
-		TriNormal, BoxX, BoxY, BoxZ,
-		FVector::CrossProduct(E0, BoxX), FVector::CrossProduct(E0, BoxY), FVector::CrossProduct(E0, BoxZ),
-		FVector::CrossProduct(E1, BoxX), FVector::CrossProduct(E1, BoxY), FVector::CrossProduct(E1, BoxZ),
-		FVector::CrossProduct(E2, BoxX), FVector::CrossProduct(E2, BoxY), FVector::CrossProduct(E2, BoxZ)
+		LocalTriNormal, 
+		FVector(1,0,0), FVector(0,1,0), FVector(0,0,1),
+		FVector::CrossProduct(E0, FVector(1,0,0)), FVector::CrossProduct(E0, FVector(0,1,0)), FVector::CrossProduct(E0, FVector(0,0,1)),
+		FVector::CrossProduct(E1, FVector(1,0,0)), FVector::CrossProduct(E1, FVector(0,1,0)), FVector::CrossProduct(E1, FVector(0,0,1)),
+		FVector::CrossProduct(E2, FVector(1,0,0)), FVector::CrossProduct(E2, FVector(0,1,0)), FVector::CrossProduct(E2, FVector(0,0,1))
 	};
 
 	for (const FVector& Axis : Axes)
@@ -551,18 +551,15 @@ bool UTriangleSweepLibrary::TestBoxTriangleSAT(
 		if (Axis.SizeSquared() < KINDA_SMALL_NUMBER) continue;
 		FVector N = Axis.GetSafeNormal();
 
-		float pA = FVector::DotProduct(A, N);
-		float pB = FVector::DotProduct(B, N);
-		float pC = FVector::DotProduct(C, N);
+		float pA = FVector::DotProduct(LocalA, N);
+		float pB = FVector::DotProduct(LocalB, N);
+		float pC = FVector::DotProduct(LocalC, N);
 		float TriMin = FMath::Min3(pA, pB, pC);
 		float TriMax = FMath::Max3(pA, pB, pC);
 
-		float r = Extent.X * FMath::Abs(FVector::DotProduct(BoxX, N)) + 
-				  Extent.Y * FMath::Abs(FVector::DotProduct(BoxY, N)) + 
-				  Extent.Z * FMath::Abs(FVector::DotProduct(BoxZ, N));
-		float BoxProj = FVector::DotProduct(BoxCenter, N);
+		float r = Extent.X * FMath::Abs(N.X) + Extent.Y * FMath::Abs(N.Y) + Extent.Z * FMath::Abs(N.Z);
 
-		if (BoxProj - r > TriMax || BoxProj + r < TriMin)
+		if (-r > TriMax || r < TriMin)
 		{
 			return false;
 		}
@@ -601,7 +598,8 @@ void UTriangleSweepLibrary::IntersectCapsule(
 
 void UTriangleSweepLibrary::IntersectConvex(
 	const FTransform& ConvexTransform, const FKConvexElem& ConvexElem, 
-	const FPlane& Plane, TArray<FVector, TInlineAllocator<32>>& OutPoints)
+	const FVector& A, const FVector& B, const FVector& C, 
+	TArray<FVector, TInlineAllocator<32>>& OutPoints)
 {
     const TArray<FVector>& LocalVertices = ConvexElem.VertexData;
     const TArray<int32>& Indices = ConvexElem.IndexData;
@@ -611,15 +609,18 @@ void UTriangleSweepLibrary::IntersectConvex(
         return;
     }
 
-    TArray<FVector, TInlineAllocator<64>> WorldVertices;
+	FTransform InverseTransform = ConvexTransform.Inverse();
+	FVector LocalA = InverseTransform.TransformPosition(A);
+	FVector LocalB = InverseTransform.TransformPosition(B);
+	FVector LocalC = InverseTransform.TransformPosition(C);
+	FPlane LocalPlane(LocalA, LocalB, LocalC);
+
     TArray<float, TInlineAllocator<64>> Distances;
-    WorldVertices.SetNumUninitialized(LocalVertices.Num());
     Distances.SetNumUninitialized(LocalVertices.Num());
 
     for (int32 i = 0; i < LocalVertices.Num(); ++i)
     {
-        WorldVertices[i] = ConvexTransform.TransformPosition(FVector(LocalVertices[i]));
-        Distances[i] = Plane.PlaneDot(WorldVertices[i]);
+        Distances[i] = LocalPlane.PlaneDot(FVector(LocalVertices[i]));
     }
 
     const int32 TriangleCount = Indices.Num() / 3;
@@ -629,21 +630,19 @@ void UTriangleSweepLibrary::IntersectConvex(
         const int32 i1 = Indices[i * 3 + 1];
         const int32 i2 = Indices[i * 3 + 2];
 
-        if (Distances[i0] * Distances[i1] < 0.0f)
-        {
-            float t = Distances[i0] / (Distances[i0] - Distances[i1]);
-            OutPoints.Add(WorldVertices[i0] + t * (WorldVertices[i1] - WorldVertices[i0]));
-        }
-        if (Distances[i1] * Distances[i2] < 0.0f)
-        {
-            float t = Distances[i1] / (Distances[i1] - Distances[i2]);
-            OutPoints.Add(WorldVertices[i1] + t * (WorldVertices[i2] - WorldVertices[i1]));
-        }
-        if (Distances[i2] * Distances[i0] < 0.0f)
-        {
-            float t = Distances[i2] / (Distances[i2] - Distances[i0]);
-            OutPoints.Add(WorldVertices[i2] + t * (WorldVertices[i0] - WorldVertices[i2]));
-        }
+		auto CheckEdge = [&](int32 idx0, int32 idx1)
+		{
+			if (Distances[idx0] * Distances[idx1] < 0.0f)
+			{
+				float t = Distances[idx0] / (Distances[idx0] - Distances[idx1]);
+				FVector LocalPoint = FVector(LocalVertices[idx0]) + t * (FVector(LocalVertices[idx1]) - FVector(LocalVertices[idx0]));
+				OutPoints.Add(ConvexTransform.TransformPosition(LocalPoint));
+			}
+		};
+
+		CheckEdge(i0, i1);
+		CheckEdge(i1, i2);
+		CheckEdge(i2, i0);
     }
 }
 

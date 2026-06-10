@@ -158,14 +158,12 @@ private:
 		UPrimitiveComponent* HitComp, 
 		const FVector& A, const FVector& B, const FVector& C, 
 		const FPlane& TrianglePlane,
-		float D00, float D11, float D01, float InvDenom, 
 		TArray<FVector, TInlineAllocator<32>>& OutPoints);
 
 	static bool TestBoxTriangleSAT(
 		const FTransform& BoxTransform, 
 		const FVector& Extent, 
-		const FVector& A, const FVector& B, const FVector& C, 
-		const FVector& TriNormal);
+		const FVector& A, const FVector& B, const FVector& C);
 
 	static void IntersectCapsule(
 		const FVector& Center, float HalfHeight, float Radius, const FVector& UpVector, 
@@ -173,6 +171,7 @@ private:
 
 	static void IntersectConvex(
 		const FTransform& ConvexTransform, const FKConvexElem& ConvexElem, 
-		const FPlane& Plane, TArray<FVector, TInlineAllocator<32>>& OutPoints);
+		const FVector& A, const FVector& B, const FVector& C, 
+		TArray<FVector, TInlineAllocator<32>>& OutPoints);
 
 };
